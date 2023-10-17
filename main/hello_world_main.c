@@ -8,6 +8,8 @@
 */
 #include <stdio.h>
 #include "sdkconfig.h"
+#include "driver/uart.h"
+#include "driver/gpio.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
 #include "esp_system.h"
@@ -15,28 +17,24 @@
 #include "led.h"
 #include "status.h"
 #include "config.h"
+#include "uart_reader.h"
+
+
 
 
 void app_main(void)
 {
+    xTaskCreate(uart_select_task, "uart_select_task", 4*1024, NULL, 5, NULL);
     printf("Hello world!\n");
 	status_init();
     config_init();
     led_on();
 	config_update_channels(); 	
-    vTaskDelay(1000/portTICK_PERIOD_MS);
-    config_setMode(FX_MODE_STATIC);
-    int count = 21;
+
     while (1)
     {
         printf("Hello world!\n");
         vTaskDelay(10000/portTICK_PERIOD_MS);
-        config_setMode(count);
-        count++;
-        if(count>66){
-            count = 0;
-        }
     }
-    
 
 }

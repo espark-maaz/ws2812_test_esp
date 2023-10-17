@@ -16,6 +16,17 @@
     "files.associations": {
         "led.h": "c",
         "config.h": "c",
-        "*.inc": "c"
+        "*.inc": "c",
+        "uart.h": "c",
+        "freertos.h": "c",
+        "esp32-hal-uart.h": "c",
+        "ets_sys.h": "c",
+        "esp_attr.h": "c",
+        "queue.h": "c",
+        "semphr.h": "c",
+        "dport_reg.h": "c",
+        "rtc.h": "c",
+        "esp_intr_alloc.h": "c",
+        "conf.h": "c"
     }
 }
