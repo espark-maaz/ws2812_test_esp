@@ -83,13 +83,26 @@ const float ratio = (float)FREQ_INPUT / LED_STRIP_RMT_CLK_DIV / 1e09f;
 // const float ratio = FREQ_INPUT / (380000 * 100.);
 // const float factor = FREQ_INPUT / (380000 * 100.);
 
-IRAM_ATTR rmt_item32_t cs8812_high = {
+// IRAM_ATTR rmt_item32_t cs8812_high = {
+// 	.duration0 = (uint32_t)(ratio * WS2812_T0H_NS),
+// 	.level0 = 1,
+// 	.duration1 = (uint32_t)(ratio * WS2812_T0L_NS),
+// 	.level1 = 0};
+
+// IRAM_ATTR rmt_item32_t cs8812_low = {
+// 	.duration0 = (uint32_t)(ratio * WS2812_T1H_NS),
+// 	.level0 = 1,
+// 	.duration1 = (uint32_t)(ratio * WS2812_T1L_NS),
+// 	.level1 = 0,
+// };
+
+IRAM_ATTR rmt_item32_t cs8812_low = {
 	.duration0 = (uint32_t)(ratio * WS2812_T0H_NS),
 	.level0 = 1,
 	.duration1 = (uint32_t)(ratio * WS2812_T0L_NS),
 	.level1 = 0};
 
-IRAM_ATTR rmt_item32_t cs8812_low = {
+IRAM_ATTR rmt_item32_t cs8812_high = {
 	.duration0 = (uint32_t)(ratio * WS2812_T1H_NS),
 	.level0 = 1,
 	.duration1 = (uint32_t)(ratio * WS2812_T1L_NS),
@@ -223,7 +236,8 @@ static const uint8_t version_gpio[CONFIG_CONTROLLER_LED_LINES] = {CONFIG_CONTROL
  */
 uint8_t ownled_getChannels()
 {
-	return CONFIG_CONTROLLER_LED_LINES;
+	// return CONFIG_CONTROLLER_LED_LINES; //FIXME:
+	return 8;
 }
 
 uint8_t ownled_getBlocksize()
@@ -287,18 +301,18 @@ void ownled_init()
 								   .idle_output_en = true,
 							   }};
 
-		gpio_pad_select_gpio(version_gpio[i]);
-		gpio_set_level(version_gpio[i], 0);
-		gpio_set_direction(version_gpio[i],
+		gpio_pad_select_gpio(GPIO_NUM_16);
+		gpio_set_level(GPIO_NUM_16, 0);
+		gpio_set_direction(GPIO_NUM_16,
 						   GPIO_MODE_OUTPUT);
 
 		ESP_ERROR_CHECK(rmt_config(&config));
 		ESP_ERROR_CHECK(
 			rmt_set_tx_thr_intr_en(lines[i].rmtChannel, true,
 								   ownled_getBlocksize() * RMT_MEM_ITEM_NUM / 2));
-		ESP_LOGD(TAG, "init %d config %d %p", i,
-				 version_gpio[i],
-				 &RMT.tx_lim_ch[i]);
+		// ESP_LOGD(TAG, "init %d config %d %p", i,
+		// 		 version_gpio[i],
+		// 		 &RMT.tx_lim_ch[i]);
 	}
 	ESP_ERROR_CHECK(esp_intr_alloc(ETS_RMT_INTR_SOURCE,
 								   ESP_INTR_FLAG_LEVEL5 | ESP_INTR_FLAG_IRAM,
@@ -346,10 +360,10 @@ void ownled_set_default()
 	// cs8812_low.duration0 = (uint32_t)(ratio * WS2812_T0H_NS);
 	// cs8812_low.duration1 = (uint32_t)(ratio * WS2812_T0L_NS);
 
-	cs8812_high.duration0 = (uint32_t)(ratio * WS2812_T0H_NS);
-	cs8812_high.duration1 = (uint32_t)(ratio * WS2812_T0L_NS);
-	cs8812_low.duration0 = (uint32_t)(ratio * WS2812_T1H_NS);
-	cs8812_low.duration1 = (uint32_t)(ratio * WS2812_T1L_NS);
+	cs8812_low.duration0 = (uint32_t)(ratio * WS2812_T0H_NS);
+	cs8812_low.duration1 = (uint32_t)(ratio * WS2812_T0L_NS);
+	cs8812_high.duration0 = (uint32_t)(ratio * WS2812_T1H_NS);
+	cs8812_high.duration1 = (uint32_t)(ratio * WS2812_T1L_NS);
 	
 
 	// cs8812_high.duration0 = DEFAULT_PULSE_LENGTH * DEFAULT_ONE_PULSE_LENGTH;

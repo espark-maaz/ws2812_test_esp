@@ -24,13 +24,12 @@
 
 void app_main(void)
 {
-    xTaskCreate(uart_select_task, "uart_select_task", 4*1024, NULL, 5, NULL);
+    xTaskCreate(uart_task, "uart_select_task", 4*1024, NULL, 5, NULL);
     printf("Hello world!\n");
 	status_init();
     config_init();
     led_on();
 	config_update_channels(); 	
-
     while (1)
     {
         printf("Hello world!\n");

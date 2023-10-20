@@ -13,6 +13,7 @@
 #define MAIN_LED_H_
 
 #include <stdint.h>
+#include <stdbool.h>
 
 enum LED_ORIENTATION {
   LED_ORI0_ZIGZAG,
@@ -34,25 +35,26 @@ enum LED_ORIENTATION {
   LED_ORI_MAXVALUE
 };
 enum LED_MODE {
-  LED_MODE_OFF,
-  LED_MODE_NETWORK,
-  LED_MODE_WHITE,
-  LED_MODE_GRAY,
-  LED_MODE_RED,
-  LED_MODE_YELLOW,
-  LED_MODE_GREEN,
-  LED_MODE_CYAN,
-  LED_MODE_BLUE,
-  LED_MODE_MAGENTA,
-  LED_MODE_FADE_X,
-  LED_MODE_FADE_Y,
-  LED_MODE_FADE_XY,
-  LED_MODE_LINES_X,
-  LED_MODE_LINES_Y,
-  LED_MODE_LINES_XY,
-  LED_MODE_CORNERS,
-  LED_MODE_SQUARE,
-  LED_MODE_PRODUCTION_TEST,
+  LED_MODE_SOLID,
+  // LED_MODE_OFF,
+  // LED_MODE_NETWORK,
+  // LED_MODE_WHITE,
+  // LED_MODE_GRAY,
+  // LED_MODE_RED,
+  // LED_MODE_YELLOW,
+  // LED_MODE_GREEN,
+  // LED_MODE_CYAN,
+  // LED_MODE_BLUE,
+  // LED_MODE_MAGENTA,
+  // LED_MODE_FADE_X,
+  // LED_MODE_FADE_Y,
+  // LED_MODE_FADE_XY,
+  // LED_MODE_LINES_X,
+  // LED_MODE_LINES_Y,
+  // LED_MODE_LINES_XY,
+  // LED_MODE_CORNERS,
+  // LED_MODE_SQUARE,
+  // LED_MODE_PRODUCTION_TEST,
   FX_MODE_BLINK,
   FX_MODE_BREATH,
   FX_MODE_STATIC,
@@ -135,6 +137,10 @@ struct LED_CONFIG_CHANNEL {
   int16_t ox;
   int16_t oy;
   int16_t black[3];
+  bool selected;
+  int start, stop;
+  int segment_id;
+  int number_of_leds;
 };
 
 struct LED_CONFIG {
@@ -144,6 +150,8 @@ struct LED_CONFIG {
   struct LED_CONFIG_CHANNEL channel[8];
   uint16_t artnet_width;
   uint16_t artnet_universe_offset;
+  uint32_t config_color[3];
+  int total_leds;
 };
 
 void led_on();

@@ -34,7 +34,8 @@ static int32_t led_counter = 0;
 
 // #define LED_MAX_LINES  (sizeof(led_config.channel) / sizeof(led_config.channel[0]))
 
-#define LED_MAX_LINES led_config.channels
+// #define LED_MAX_LINES led_config.channels
+#define LED_MAX_LINES 8
 
 struct LED_COLORING led_coloring = { 1, 0, 1, 0, 1, 0, 1, 0, 1, 0 };
 
@@ -147,12 +148,12 @@ static void hsv(float *r, float *g, float *b) {
 }
 
 static void contrasts(float *r, float *g, float *b) {
-	*r = *r * led_coloring.contrast * led_coloring.red_contrast
-			+ led_coloring.brightness + led_coloring.red_brightness;
-	*g = *g * led_coloring.contrast * led_coloring.green_contrast
-			+ led_coloring.brightness + led_coloring.green_brightness;
-	*b = *b * led_coloring.contrast * led_coloring.blue_contrast
-			+ led_coloring.brightness + led_coloring.blue_brightness;
+	*r = *r * (led_coloring.contrast * led_coloring.red_contrast)
+			* (led_coloring.brightness * led_coloring.red_brightness);
+	*g = *g * (led_coloring.contrast * led_coloring.green_contrast)
+			* (led_coloring.brightness * led_coloring.green_brightness);
+	*b = *b * (led_coloring.contrast * led_coloring.blue_contrast)
+			* (led_coloring.brightness * led_coloring.blue_brightness);
 }
 
 void led_set_color(uint8_t c, uint16_t p, uint8_t r, uint8_t g, uint8_t b) {
@@ -162,11 +163,13 @@ void led_set_color(uint8_t c, uint16_t p, uint8_t r, uint8_t g, uint8_t b) {
 	float fb = BYTEtoFLOAT(b);
 
 	hsv(&fr, &fg, &fb);
+
 	contrasts(&fr, &fg, &fb);
 
 	r = FLOATtoBYTE(fr);
 	g = FLOATtoBYTE(fg);
 	b = FLOATtoBYTE(fb);
+
 
 	if (p == led_config.channel[c].black[0]
 			|| p == led_config.channel[c].black[1]
@@ -262,7 +265,7 @@ static void led_channel_rgb(int c, int x, int y, uint8_t r, uint8_t g,
 
 void led_rgb_rtp(int x, int y, uint8_t r, uint8_t g, uint8_t b) {
 	for (int c = 0; c < led_get_max_lines(); c++) {
-		if (led_config.channel[c].mode == LED_MODE_NETWORK) {
+		if (led_config.channel[c].mode == LED_MODE_SOLID) {  //FIXME: LED_MODE_NETWORK
 			led_channel_rgb(c, x, y, r, g, b);
 		}
 	}
@@ -276,7 +279,7 @@ void led_channel_block(int c, int x, int y, uint8_t *r, uint8_t *g, uint8_t *b) 
 
 void led_block(int x, int y, uint8_t *r, uint8_t *g, uint8_t *b) {
 	for (int c = 0; c < led_get_max_lines(); c++) {
-		if (led_config.channel[c].mode == LED_MODE_NETWORK) {
+		if (led_config.channel[c].mode == LED_MODE_SOLID) { //FIXME: LED_MODE_NETWORK
 			led_channel_block(c, x, y, r, g, b);
 		}
 	}
@@ -285,20 +288,46 @@ void led_block(int x, int y, uint8_t *r, uint8_t *g, uint8_t *b) {
 static void handleNewConfig() {
 	ESP_LOGI(TAG, "HADNLING NEW CONFIG");
 	for (int i = 0; i < led_get_max_lines(); i++) {
-		WS2812FX_init(i, led_config.channel[i].sx * led_config.channel[i].sy);
-		ownled_setSize(i,
-				led_config.channel[i].sx * led_config.channel[i].sy
-						+ led_config.prefix_leds);
+		if(led_config.channel[i].selected == true){
+			WS2812FX_init(i, 
+				led_config.channel[i].stop - led_config.channel[i].start,
+				led_config.config_color[0], 
+				led_config.config_color[1], 
+				led_config.config_color[2],
+				led_config.channel[i].start,
+				led_config.channel[i].stop,
+				led_config.channel[i].mode
+			);
+			// ESP_LOGI(TAG, "BEFORE SETSIZE");
+			ownled_setSize(i,
+					led_config.total_leds);
+			// ESP_LOGI(TAG, "AFTER SETSIZE");
+
+		}
 	}
 	framerate = led_config.refresh_rate;
 }
 
 static void fill(int line, uint8_t r, uint8_t g, uint8_t b) {
-	int size = led_config.channel[line].sx * led_config.channel[line].sy;
+	int size = led_config.channel[line].stop - led_config.channel[line].start;
+	int seg_length_total = led_config.channel[line].number_of_leds;
+	int total_strip_leds = led_config.total_leds;
+	// while(total_strip_leds > 0){
+	// 	total_strip_leds--;
+	// 	led_set_color(line, total_strip_leds, 0, 0, 0);
+	// }
 	while (size > 0) {
 		size--;
-		led_set_color(line, size, r, g, b);
+		led_set_color(line, led_config.channel[line].start+size, r, g, b);
 	}
+	// for(int i = ((line*seg_length_total)); i<((line+1)*seg_length_total); i++){
+	// 	if(i<led_config.channel[line].stop && i>led_config.channel[line].start){
+	// 		led_set_color(line, i, r, g, b);
+	// 	}
+	// 	else{
+	// 		led_set_color(line, i, 0, 0 ,0);
+	// 	}
+	// }
 }
 
 static void fillFadeX(int line) {
@@ -471,315 +500,318 @@ static void task(void *args) {
 
 	for (;;) {
 		// vTaskDelay(10/portTICK_PERIOD_MS);
-		ESP_LOGE(TAG, "IN THE LED LOOP");
 		/**
 		 * start sending LED data
 		 */
 		ownled_send();
 
-		// for (;;) {
-		// 	ESP_LOGE(TAG, "IN THE second LED LOOP");			
-		// 	/**
-		// 	 * wait for 1/framerate s (in the mean)
-		// 	 */
-		// 	// framerate = 20;
-		// 	ESP_LOGI(TAG, "FRAMERATE %f", framerate);
-		// 	if (framerate > 0) {
-		// 		if (++count >= framerate) {
-		// 			ESP_LOGV(TAG, "led wait %f %d %f",
-		// 					xTaskGetTickCount() / (float )configTICK_RATE_HZ,
-		// 					count, framerate);
-		// 			count = 0;
-		// 		}
-		// 		incrementMs += 1000. / framerate;
-		// 		int incrementTicks = incrementMs / portTICK_PERIOD_MS;
-		// 		incrementMs -= incrementTicks * portTICK_PERIOD_MS;
-		// 		if (incrementTicks < 1)
-		// 			incrementTicks = 1;
-		// 		vTaskDelayUntil(&xLastWakeTime, incrementTicks);
-		// 		if (xLastWakeTime + incrementTicks < xTaskGetTickCount()) {
-		// 			if (!missed) {
-		// 				ESP_LOGE(TAG, "frame(s) missed %d",
-		// 						xTaskGetTickCount() - xLastWakeTime);
-		// 				missed = true;
-		// 			}
-		// 			status_led_top_too_late();
-		// 			continue;
-		// 		} else if (xTaskGetTickCount() - xLastWakeTime > 2
-		// 				&& xLastWakeTime < xTaskGetTickCount()) {
-		// 			if (!missed)
-		// 				ESP_LOGD(TAG, "frame late %d",
-		// 						xTaskGetTickCount() - xLastWakeTime);
-		// 			status_led_top_too_late();
-		// 			continue;
-		// 		}
-		// 	} else {
-		// 		ESP_LOGI(TAG, "TASK DELETED");
-		// 		vTaskSuspend(taskHandle);
-		// 	}
+		for (;;) {
+			// ESP_LOGE(TAG, "IN THE second LED LOOP");			
+			/**
+			 * wait for 1/framerate s (in the mean)
+			 */
+			// framerate = 20;
+			// ESP_LOGI(TAG, "FRAMERATE %f", framerate);
+			if (framerate > 0) {
+				if (++count >= framerate) {
+					ESP_LOGV(TAG, "led wait %f %d %f",
+							xTaskGetTickCount() / (float )configTICK_RATE_HZ,
+							count, framerate);
+					count = 0;
+				}
+				incrementMs += 1000. / framerate;
+				int incrementTicks = incrementMs / portTICK_PERIOD_MS;
+				incrementMs -= incrementTicks * portTICK_PERIOD_MS;
+				if (incrementTicks < 1)
+					incrementTicks = 1;
+				vTaskDelayUntil(&xLastWakeTime, incrementTicks);
+				if (xLastWakeTime + incrementTicks < xTaskGetTickCount()) {
+					if (!missed) {
+						ESP_LOGE(TAG, "frame(s) missed %d",
+								xTaskGetTickCount() - xLastWakeTime);
+						missed = true;
+					}
+					status_led_top_too_late();
+					continue;
+				} else if (xTaskGetTickCount() - xLastWakeTime > 2
+						&& xLastWakeTime < xTaskGetTickCount()) {
+					if (!missed)
+						ESP_LOGD(TAG, "frame late %d",
+								xTaskGetTickCount() - xLastWakeTime);
+					status_led_top_too_late();
+					continue;
+				}
+			} else {
+				ESP_LOGI(TAG, "TASK DELETED");
+				vTaskSuspend(taskHandle);
+			}
 
-		// 	/**
-		// 	 * wait for sending LED data finish
-		// 	 */
-		// 	if (ownled_isFinished() != ESP_OK) {
-		// 		ESP_LOGD(TAG, "led write out early");
-		// 		status_led_bottom_too_slow();
-		// 		continue;
-		// 	} else
-		// 		status_led_on_time();
-		// 	missed = false;
-		// 	break;
-		// }
+			/**
+			 * wait for sending LED data finish
+			 */
+			if (ownled_isFinished() != ESP_OK) {
+				ESP_LOGD(TAG, "led write out early");
+				status_led_bottom_too_slow();
+				continue;
+			} else
+				status_led_on_time();
+			missed = false;
+			break;
+		}
 
 		/**
 		 * generate LED data
 		 */
-		if (xQueueReceive(q, &led_config, 0) == pdTRUE) {
-			handleNewConfig();
-		} else {
-			led_counter++;
+		if (xQueueReceive(q, &led_config, 0) == pdTRUE) {handleNewConfig();}
+			
+		// } 
+		// else {
+		led_counter++;
 
-			TickType_t now = xTaskGetTickCount();
+		TickType_t now = xTaskGetTickCount();
 
-			for (int i = 0; i < led_get_max_lines(); i++) {
-			ESP_LOGI(TAG, "MODE %d",  led_config.channel[i].mode);	
-				switch (led_config.channel[i].mode) {
-				case LED_MODE_OFF:
-					fill(i, 0, 0, 0);
+		for (int i = 0; i < led_get_max_lines(); i++) {
+		// ESP_LOGI(TAG, "MODE %d",  led_config.channel[i].mode);	
+			switch (led_config.channel[i].mode) {
+			// case LED_MODE_OFF:
+			// 	fill(i, 0, 0, 0);
+			// 	break;
+			// case LED_MODE_NETWORK:
+			// 	break;
+			// case LED_MODE_WHITE:
+			// 	fill(i, 255, 255, 255);
+			// 	break;
+			// case LED_MODE_GRAY:
+			// 	fill(i, 128, 128, 128);
+			// 	break;
+			// case LED_MODE_RED:
+			// 	ESP_LOGI(TAG, "MODE RED");
+			// 	fill(i, 255, 0, 0);
+			// 	break;
+			// case LED_MODE_YELLOW:
+			// 	fill(i, 255, 255, 0);
+			// 	break;
+			// case LED_MODE_GREEN:
+			// 	fill(i, 0, 255, 0);
+			// 	break;
+			// case LED_MODE_CYAN:
+			// 	fill(i, 0, 255, 255);
+			// 	break;
+			// case LED_MODE_BLUE:
+			// 	fill(i, 0, 0, 255);
+			// 	break;
+			// case LED_MODE_MAGENTA:
+			// 	fill(i, 255, 0, 255);
+			// 	break;
+			// case LED_MODE_FADE_X:
+			// 	fillFadeX(i);
+			// 	break;
+			// case LED_MODE_FADE_Y:
+			// 	fillFadeY(i);
+			// 	break;
+			// case LED_MODE_FADE_XY:
+			// 	fillFadeXY(i);
+			// 	break;
+			// case LED_MODE_LINES_X:
+			// 	fillLinesX(i);
+			// 	break;
+			// case LED_MODE_LINES_Y:
+			// 	fillLinesY(i);
+			// 	break;
+			// case LED_MODE_LINES_XY:
+			// 	fillLinesXY(i);
+			// 	break;
+			// case LED_MODE_CORNERS:
+			// 	fillCorners(i);
+			// 	break;
+			// case LED_MODE_SQUARE:
+			// 	fillSquare(i);
+			// 	break;
+			case LED_MODE_SOLID:
+				fill(i, 255, 0, 0);
+				break;
+			// case LED_MODE_PRODUCTION_TEST:
+			// 	fillProductionTest(i);
+			// 	break;
+			case FX_MODE_BLINK:
+				WS2812FX_call(i, WS2812FX_mode_blink);
+				break;
+			case FX_MODE_BREATH:
+				WS2812FX_call(i, WS2812FX_mode_breath);
+				break;
+			case FX_MODE_COLOR_WIPE:
+				WS2812FX_call(i, WS2812FX_mode_color_wipe);
+				break;
+			case FX_MODE_COLOR_WIPE_INV:
+				WS2812FX_call(i, WS2812FX_mode_color_wipe_inv);
+				break;
+			case FX_MODE_COLOR_WIPE_REV:
+				WS2812FX_call(i, WS2812FX_mode_color_wipe_rev);
+				break;
+			case FX_MODE_COLOR_WIPE_REV_INV:
+				WS2812FX_call(i, WS2812FX_mode_color_wipe_rev_inv);
+				break;
+			case FX_MODE_COLOR_WIPE_RANDOM:
+				WS2812FX_call(i, WS2812FX_mode_color_wipe_random);
+				break;
+			case FX_MODE_RANDOM_COLOR:
+				WS2812FX_call(i, WS2812FX_mode_random_color);
+				break;
+			case FX_MODE_SINGLE_DYNAMIC:
+				WS2812FX_call(i, WS2812FX_mode_single_dynamic);
+				break;
+			case FX_MODE_MULTI_DYNAMIC:
+				WS2812FX_call(i, WS2812FX_mode_multi_dynamic);
+				break;
+			case FX_MODE_RAINBOW:
+				WS2812FX_call(i, WS2812FX_mode_rainbow);
+				break;
+			case FX_MODE_RAINBOW_CYCLE:
+				WS2812FX_call(i, WS2812FX_mode_rainbow_cycle);
+				break;
+			case FX_MODE_SCAN:
+				WS2812FX_call(i, WS2812FX_mode_scan);
+				break;
+			case FX_MODE_DUAL_SCAN:
+				WS2812FX_call(i, WS2812FX_mode_dual_scan);
+				break;
+			case FX_MODE_FADE:
+				WS2812FX_call(i, WS2812FX_mode_fade);
+				break;
+			case FX_MODE_THEATER_CHASE:
+				WS2812FX_call(i, WS2812FX_mode_theater_chase);
+				break;
+			case FX_MODE_THEATER_CHASE_RAINBOW:
+				WS2812FX_call(i, WS2812FX_mode_theater_chase_rainbow);
+				break;
+			case FX_MODE_RUNNING_LIGHTS:
+				WS2812FX_call(i, WS2812FX_mode_running_lights);
+				break;
+				/*
+					case FX_MODE_TWINKLE:
+					WS2812FX_call(i, WS2812FX_mode_twinkle);
 					break;
-				case LED_MODE_NETWORK:
+					case FX_MODE_TWINKLE_RANDOM:
+					WS2812FX_call(i, WS2812FX_mode_twinkle_random);
 					break;
-				case LED_MODE_WHITE:
-					fill(i, 255, 255, 255);
+					case FX_MODE_TWINKLE_FADE:
+					WS2812FX_call(i, WS2812FX_mode_twinkle_fade);
 					break;
-				case LED_MODE_GRAY:
-					fill(i, 128, 128, 128);
+					case FX_MODE_TWINKLE_FADE_RANDOM:
+					WS2812FX_call(i, WS2812FX_mode_twinkle_fade_random);
 					break;
-				case LED_MODE_RED:
-					ESP_LOGI(TAG, "MODE RED");
-					fill(i, 255, 0, 0);
+					*/
+			case FX_MODE_STATIC:
+				WS2812FX_call(i, WS2812FX_mode_static);
+				break;
+			case FX_MODE_SPARKLE:
+				WS2812FX_call(i, WS2812FX_mode_sparkle);
+				break;
+			case FX_MODE_FLASH_SPARKLE:
+				WS2812FX_call(i, WS2812FX_mode_flash_sparkle);
+				break;
+			case FX_MODE_HYPER_SPARKLE:
+				WS2812FX_call(i, WS2812FX_mode_hyper_sparkle);
+				break;
+			case FX_MODE_STROBE:
+				WS2812FX_call(i, WS2812FX_mode_strobe);
+				break;
+			case FX_MODE_STROBE_RAINBOW:
+				WS2812FX_call(i, WS2812FX_mode_strobe_rainbow);
+				break;
+			case FX_MODE_MULTI_STROBE:
+				WS2812FX_call(i, WS2812FX_mode_multi_strobe);
+				break;
+			case FX_MODE_BLINK_RAINBOW:
+				WS2812FX_call(i, WS2812FX_mode_blink_rainbow);
+				break;
+			case FX_MODE_CHASE_WHITE:
+				WS2812FX_call(i, WS2812FX_mode_chase_white);
+				break;
+			case FX_MODE_CHASE_COLOR:
+				WS2812FX_call(i, WS2812FX_mode_chase_color);
+				break;
+			case FX_MODE_CHASE_RANDOM:
+				WS2812FX_call(i, WS2812FX_mode_chase_random);
+				break;
+
+			case FX_MODE_CHASE_RAINBOW:
+				WS2812FX_call(i, WS2812FX_mode_chase_rainbow);
+				break;
+			case FX_MODE_CHASE_FLASH:
+				WS2812FX_call(i, WS2812FX_mode_chase_flash);
+				break;
+			case FX_MODE_CHASE_FLASH_RANDOM:
+				WS2812FX_call(i, WS2812FX_mode_chase_flash_random);
+				break;
+			case FX_MODE_CHASE_RAINBOW_WHITE:
+				WS2812FX_call(i, WS2812FX_mode_chase_rainbow);
+				break;
+			case FX_MODE_CHASE_BLACKOUT_RAINBOW:
+				WS2812FX_call(i, WS2812FX_mode_chase_rainbow_white);
+				break;
+			case FX_MODE_COLOR_SWEEP_RANDOM:
+				WS2812FX_call(i, WS2812FX_mode_color_sweep_random);
+				break;
+			case FX_MODE_RUNNING_COLOR:
+				WS2812FX_call(i, WS2812FX_mode_running_color);
+				break;
+			case FX_MODE_RUNNING_RED_BLUE:
+				WS2812FX_call(i, WS2812FX_mode_running_red_blue);
+				break;
+				/*
+					case FX_MODE_RUNNING_RANDOM:
+					WS2812FX_call(i, WS2812FX_mode_running_random);
 					break;
-				case LED_MODE_YELLOW:
-					fill(i, 255, 255, 0);
+					case FX_MODE_LARSON_SCANNER:
+					WS2812FX_call(i, WS2812FX_mode_breath);
 					break;
-				case LED_MODE_GREEN:
-					fill(i, 0, 255, 0);
+					case FX_MODE_COMET:
+					WS2812FX_call(i, WS2812FX_mode_breath);
 					break;
-				case LED_MODE_CYAN:
-					fill(i, 0, 255, 255);
+					case FX_MODE_FIREWORKS:
+					WS2812FX_call(i, WS2812FX_mode_breath);
 					break;
-				case LED_MODE_BLUE:
-					fill(i, 0, 0, 255);
-					break;
-				case LED_MODE_MAGENTA:
-					fill(i, 255, 0, 255);
-					break;
-				case LED_MODE_FADE_X:
-					fillFadeX(i);
-					break;
-				case LED_MODE_FADE_Y:
-					fillFadeY(i);
-					break;
-				case LED_MODE_FADE_XY:
-					fillFadeXY(i);
-					break;
-				case LED_MODE_LINES_X:
-					fillLinesX(i);
-					break;
-				case LED_MODE_LINES_Y:
-					fillLinesY(i);
-					break;
-				case LED_MODE_LINES_XY:
-					fillLinesXY(i);
-					break;
-				case LED_MODE_CORNERS:
-					fillCorners(i);
-					break;
-				case LED_MODE_SQUARE:
-					fillSquare(i);
-					break;
-				case LED_MODE_PRODUCTION_TEST:
-					fillProductionTest(i);
-					break;
-				case FX_MODE_BLINK:
+					case FX_MODE_FIREWORKS_RANDOM:
 					WS2812FX_call(i, WS2812FX_mode_blink);
 					break;
-				case FX_MODE_BREATH:
-					WS2812FX_call(i, WS2812FX_mode_breath);
-					break;
-				case FX_MODE_COLOR_WIPE:
-					WS2812FX_call(i, WS2812FX_mode_color_wipe);
-					break;
-				case FX_MODE_COLOR_WIPE_INV:
-					WS2812FX_call(i, WS2812FX_mode_color_wipe_inv);
-					break;
-				case FX_MODE_COLOR_WIPE_REV:
-					WS2812FX_call(i, WS2812FX_mode_color_wipe_rev);
-					break;
-				case FX_MODE_COLOR_WIPE_REV_INV:
-					WS2812FX_call(i, WS2812FX_mode_color_wipe_rev_inv);
-					break;
-				case FX_MODE_COLOR_WIPE_RANDOM:
-					WS2812FX_call(i, WS2812FX_mode_color_wipe_random);
-					break;
-				case FX_MODE_RANDOM_COLOR:
-					WS2812FX_call(i, WS2812FX_mode_random_color);
-					break;
-				case FX_MODE_SINGLE_DYNAMIC:
-					WS2812FX_call(i, WS2812FX_mode_single_dynamic);
-					break;
-				case FX_MODE_MULTI_DYNAMIC:
-					WS2812FX_call(i, WS2812FX_mode_multi_dynamic);
-					break;
-				case FX_MODE_RAINBOW:
-					WS2812FX_call(i, WS2812FX_mode_rainbow);
-					break;
-				case FX_MODE_RAINBOW_CYCLE:
-					WS2812FX_call(i, WS2812FX_mode_rainbow_cycle);
-					break;
-				case FX_MODE_SCAN:
-					WS2812FX_call(i, WS2812FX_mode_scan);
-					break;
-				case FX_MODE_DUAL_SCAN:
-					WS2812FX_call(i, WS2812FX_mode_dual_scan);
-					break;
-				case FX_MODE_FADE:
-					WS2812FX_call(i, WS2812FX_mode_fade);
-					break;
-				case FX_MODE_THEATER_CHASE:
-					WS2812FX_call(i, WS2812FX_mode_theater_chase);
-					break;
-				case FX_MODE_THEATER_CHASE_RAINBOW:
-					WS2812FX_call(i, WS2812FX_mode_theater_chase_rainbow);
-					break;
-				case FX_MODE_RUNNING_LIGHTS:
-					WS2812FX_call(i, WS2812FX_mode_running_lights);
-					break;
-					/*
-					 case FX_MODE_TWINKLE:
-					 WS2812FX_call(i, WS2812FX_mode_twinkle);
-					 break;
-					 case FX_MODE_TWINKLE_RANDOM:
-					 WS2812FX_call(i, WS2812FX_mode_twinkle_random);
-					 break;
-					 case FX_MODE_TWINKLE_FADE:
-					 WS2812FX_call(i, WS2812FX_mode_twinkle_fade);
-					 break;
-					 case FX_MODE_TWINKLE_FADE_RANDOM:
-					 WS2812FX_call(i, WS2812FX_mode_twinkle_fade_random);
-					 break;
-					 */
-				case FX_MODE_STATIC:
-					WS2812FX_call(i, WS2812FX_mode_static);
-					break;
-				case FX_MODE_SPARKLE:
-					WS2812FX_call(i, WS2812FX_mode_sparkle);
-					break;
-				case FX_MODE_FLASH_SPARKLE:
-					WS2812FX_call(i, WS2812FX_mode_flash_sparkle);
-					break;
-				case FX_MODE_HYPER_SPARKLE:
-					WS2812FX_call(i, WS2812FX_mode_hyper_sparkle);
-					break;
-				case FX_MODE_STROBE:
-					WS2812FX_call(i, WS2812FX_mode_strobe);
-					break;
-				case FX_MODE_STROBE_RAINBOW:
-					WS2812FX_call(i, WS2812FX_mode_strobe_rainbow);
-					break;
-				case FX_MODE_MULTI_STROBE:
-					WS2812FX_call(i, WS2812FX_mode_multi_strobe);
-					break;
-				case FX_MODE_BLINK_RAINBOW:
-					WS2812FX_call(i, WS2812FX_mode_blink_rainbow);
-					break;
-				case FX_MODE_CHASE_WHITE:
-					WS2812FX_call(i, WS2812FX_mode_chase_white);
-					break;
-				case FX_MODE_CHASE_COLOR:
-					WS2812FX_call(i, WS2812FX_mode_chase_color);
-					break;
-				case FX_MODE_CHASE_RANDOM:
-					WS2812FX_call(i, WS2812FX_mode_chase_random);
-					break;
-
-				case FX_MODE_CHASE_RAINBOW:
-					WS2812FX_call(i, WS2812FX_mode_chase_rainbow);
-					break;
-				case FX_MODE_CHASE_FLASH:
-					WS2812FX_call(i, WS2812FX_mode_chase_flash);
-					break;
-				case FX_MODE_CHASE_FLASH_RANDOM:
-					WS2812FX_call(i, WS2812FX_mode_chase_flash_random);
-					break;
-				case FX_MODE_CHASE_RAINBOW_WHITE:
-					WS2812FX_call(i, WS2812FX_mode_chase_rainbow);
-					break;
-				case FX_MODE_CHASE_BLACKOUT_RAINBOW:
-					WS2812FX_call(i, WS2812FX_mode_chase_rainbow_white);
-					break;
-				case FX_MODE_COLOR_SWEEP_RANDOM:
-					WS2812FX_call(i, WS2812FX_mode_color_sweep_random);
-					break;
-				case FX_MODE_RUNNING_COLOR:
-					WS2812FX_call(i, WS2812FX_mode_running_color);
-					break;
-				case FX_MODE_RUNNING_RED_BLUE:
-					WS2812FX_call(i, WS2812FX_mode_running_red_blue);
-					break;
-					/*
-					 case FX_MODE_RUNNING_RANDOM:
-					 WS2812FX_call(i, WS2812FX_mode_running_random);
-					 break;
-					 case FX_MODE_LARSON_SCANNER:
-					 WS2812FX_call(i, WS2812FX_mode_breath);
-					 break;
-					 case FX_MODE_COMET:
-					 WS2812FX_call(i, WS2812FX_mode_breath);
-					 break;
-					 case FX_MODE_FIREWORKS:
-					 WS2812FX_call(i, WS2812FX_mode_breath);
-					 break;
-					 case FX_MODE_FIREWORKS_RANDOM:
-					 WS2812FX_call(i, WS2812FX_mode_blink);
-					 break;
-					 */
-				case FX_MODE_MERRY_CHRISTMAS:
-					WS2812FX_call(i, WS2812FX_mode_merry_christmas);
-					break;
-				case FX_MODE_FIRE_FLICKER:
-					WS2812FX_call(i, WS2812FX_mode_fire_flicker);
-					break;
-				case FX_MODE_FIRE_FLICKER_SOFT:
-					WS2812FX_call(i, WS2812FX_mode_fire_flicker_soft);
-					break;
-				case FX_MODE_FIRE_FLICKER_INTENSE:
-					WS2812FX_call(i, WS2812FX_mode_fire_flicker_intense);
-					break;
-				case FX_MODE_CIRCUS_COMBUSTUS:
-					WS2812FX_call(i, WS2812FX_mode_circus_combustus);
-					break;
-				case FX_MODE_HALLOWEEN:
-					WS2812FX_call(i, WS2812FX_mode_halloween);
-					break;
-				case FX_MODE_BICOLOR_CHASE:
-					WS2812FX_call(i, WS2812FX_mode_breath);
-					break;
-				case FX_MODE_TRICOLOR_CHASE:
-					WS2812FX_call(i, WS2812FX_mode_tricolor_chase);
-					break;
-				case FX_MODE_ICU:
-					WS2812FX_call(i, WS2812FX_mode_icu);
-					break;
-				case FX_MODE_PLAYLIST:
-					playlist_next(now, i);
-					break;
-				default:
-					break;
-				}
+					*/
+			case FX_MODE_MERRY_CHRISTMAS:
+				WS2812FX_call(i, WS2812FX_mode_merry_christmas);
+				break;
+			case FX_MODE_FIRE_FLICKER:
+				WS2812FX_call(i, WS2812FX_mode_fire_flicker);
+				break;
+			case FX_MODE_FIRE_FLICKER_SOFT:
+				WS2812FX_call(i, WS2812FX_mode_fire_flicker_soft);
+				break;
+			case FX_MODE_FIRE_FLICKER_INTENSE:
+				WS2812FX_call(i, WS2812FX_mode_fire_flicker_intense);
+				break;
+			case FX_MODE_CIRCUS_COMBUSTUS:
+				WS2812FX_call(i, WS2812FX_mode_circus_combustus);
+				break;
+			case FX_MODE_HALLOWEEN:
+				WS2812FX_call(i, WS2812FX_mode_halloween);
+				break;
+			case FX_MODE_BICOLOR_CHASE:
+				WS2812FX_call(i, WS2812FX_mode_breath);
+				break;
+			case FX_MODE_TRICOLOR_CHASE:
+				WS2812FX_call(i, WS2812FX_mode_tricolor_chase);
+				break;
+			case FX_MODE_ICU:
+				WS2812FX_call(i, WS2812FX_mode_icu);
+				break;
+			case FX_MODE_PLAYLIST:
+				playlist_next(now, i);
+				break;
+			default:
+				break;
 			}
 		}
-		vTaskDelay(10/portTICK_PERIOD_MS);
+		// }
+		// vTaskDelay(10/portTICK_PERIOD_MS);
 	}
 }
 

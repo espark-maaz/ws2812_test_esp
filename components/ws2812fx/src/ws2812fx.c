@@ -64,9 +64,9 @@ static inline int max(int a, int b) {
 }
 
 // some common colors
-#define GREEN (uint32_t)0xFF0000
-#define RED (uint32_t)0x00FF00
-#define BLUE (uint32_t)0x0000FF
+#define GREEN fx_segments[line].colors[0]
+#define RED fx_segments[line].colors[1]
+#define BLUE fx_segments[line].colors[2]
 #define WHITE (uint32_t)0xFFFFFF
 #define BLACK (uint32_t)0x000000
 #define YELLOW (uint32_t)0xFFFF00
@@ -86,7 +86,9 @@ static struct FX_SEGMENT { // 20 bytes
   uint16_t speed;
   uint8_t mode;
   uint8_t options;
+
   uint32_t colors[NUM_COLORS];
+  uint32_t rgbColor;
 
   uint32_t next_time;
   uint32_t counter_mode_step;
@@ -113,16 +115,16 @@ static uint16_t segmentLength(int line) {
 #define DEFAULT_MODE (uint8_t)0
 #define DEFAULT_SPEED (uint16_t)1000
 
-void WS2812FX_init(int line, int n) {
+void WS2812FX_init(int line, int n, uint32_t colorPrimary, uint32_t colorSecondary, uint32_t colorTertiary, uint8_t start, uint8_t stop, int mode ) {
   assert(line >= 0 && line < 8);
   memset(fx_segments + line, 0, sizeof(*fx_segments));
-  fx_segments[line].mode = DEFAULT_MODE;
-  // fx_segments[line].mode = LED_MODE_BLUE;
-  fx_segments[line].colors[0] = GREEN;
-  fx_segments[line].colors[1] = RED;
-  fx_segments[line].colors[2] = BLUE;
-  fx_segments[line].start = 0;
-  fx_segments[line].stop = n - 1;
+  fx_segments[line].mode = mode;
+  fx_segments[line].colors[0] = colorPrimary; //G
+  fx_segments[line].colors[1] = colorSecondary; //R
+  fx_segments[line].colors[2] = colorTertiary; //B
+  fx_segments[line].rgbColor = colorPrimary;
+  fx_segments[line].start = start;
+  fx_segments[line].stop = stop;
   fx_segments[line].speed = DEFAULT_SPEED;
 }
 
@@ -198,7 +200,7 @@ static uint8_t get_random_wheel_index(uint8_t pos) {
   return r;
 }
 
-static inline void setPixelColor(int line, uint16_t i, uint32_t c) {  //0x0000ff00
+static inline void setPixelColor(int line, uint16_t i, uint32_t c) {  //0x0000ff00 //TODO: Add all colouring
   uint8_t g = (c >> 16) & 0xFF;
   uint8_t r = (c >> 8) & 0xFF;
   uint8_t b = c & 0xFF;
@@ -325,8 +327,8 @@ static uint16_t color_wipe(int line, uint32_t color1, uint32_t color2,
  * Lights all LEDs one after another.
  */
 uint16_t WS2812FX_mode_color_wipe(int line) {
-  return color_wipe(line, fx_segments[line].colors[0],
-                    fx_segments[line].colors[1], false);
+  return color_wipe(line, fx_segments[line].colors[1],
+                    fx_segments[line].colors[2], false);
 }
 
 uint16_t WS2812FX_mode_color_wipe_inv(int line) {
@@ -843,7 +845,7 @@ uint16_t WS2812FX_mode_hyper_sparkle(int line) {
  */
 uint16_t WS2812FX_mode_multi_strobe(int line) {
   for (uint16_t i = fx_segments[line].start; i <= fx_segments[line].stop; i++) {
-    setPixelColor(line, i, BLACK);
+    setPixelColor(line, i, fx_segments[line].colors[1]);
   }
 
   uint16_t delay = 200 + ((9 - (fx_segments[line].speed % 10)) * 100);
